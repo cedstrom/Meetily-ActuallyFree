@@ -98,6 +98,10 @@ pub struct Setting {
     #[sqlx(rename = "customOpenAIConfig")]
     #[serde(rename = "customOpenAIConfig")]
     pub custom_openai_config: Option<String>,
+    /// Explicit path to the Claude Code CLI executable; None means auto-discover
+    #[sqlx(rename = "claudeCliPath")]
+    #[serde(rename = "claudeCliPath")]
+    pub claude_cli_path: Option<String>,
 }
 
 impl Setting {

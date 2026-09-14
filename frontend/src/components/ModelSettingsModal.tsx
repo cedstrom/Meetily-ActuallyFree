@@ -28,14 +28,25 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn, isOllamaNotInstalledError } from '@/lib/utils';
+import { ClaudeCliSettings } from '@/components/ClaudeCliSettings';
+import {
+  CLAUDE_CLI_DEFAULT_MODEL,
+  CLAUDE_CLI_FALLBACK_MODELS,
+  ClaudeCliStatus,
+  getClaudeCliPath,
+  isClaudeCliReady,
+  listClaudeCliModels,
+} from '@/lib/claude-cli';
 import { toast } from 'sonner';
 
 export interface ModelConfig {
-  provider: 'ollama' | 'groq' | 'claude' | 'openai' | 'openrouter' | 'builtin-ai' | 'custom-openai';
+  provider: 'ollama' | 'groq' | 'claude' | 'claude-cli' | 'openai' | 'openrouter' | 'builtin-ai' | 'custom-openai';
   model: string;
   whisperModel: string;
   apiKey?: string | null;
   ollamaEndpoint?: string | null;
+  // Claude Code CLI fields (only meaningful when provider is 'claude-cli')
+  claudeCliPath?: string | null;
   // Custom OpenAI fields
   customOpenAIEndpoint?: string | null;
   customOpenAIModel?: string | null;
@@ -155,6 +166,11 @@ export function ModelSettingsModal({
   const [isCustomOpenAIAdvancedOpen, setIsCustomOpenAIAdvancedOpen] = useState<boolean>(false);
   const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
 
+  // Claude Code CLI state
+  const [claudeCliPath, setClaudeCliPath] = useState<string>(modelConfig.claudeCliPath || '');
+  const [claudeCliModels, setClaudeCliModels] = useState<string[]>(CLAUDE_CLI_FALLBACK_MODELS);
+  const [claudeCliStatus, setClaudeCliStatus] = useState<ClaudeCliStatus | null>(null);
+
   // Combobox state
   const [modelComboboxOpen, setModelComboboxOpen] = useState<boolean>(false);
 
@@ -226,6 +242,7 @@ export function ModelSettingsModal({
   const modelOptions: Record<string, string[]> = {
     ollama: models.map((model) => model.name),
     claude: claudeModels.length > 0 ? claudeModels : CLAUDE_FALLBACK_MODELS,
+    'claude-cli': claudeCliModels,
     groq: groqModels.length > 0 ? groqModels : GROQ_FALLBACK_MODELS,
     openai: openaiModels.length > 0 ? openaiModels : OPENAI_FALLBACK_MODELS,
     openrouter: openRouterModels.map((m) => m.id),
@@ -249,10 +266,16 @@ export function ModelSettingsModal({
     !customOpenAIModel.trim()
   );
 
+  // The CLI provider has no key to validate, so readiness is the gate instead:
+  // saving a provider that cannot run would only fail later, at summary time.
+  const isClaudeCliInvalid =
+    modelConfig.provider === 'claude-cli' && !isClaudeCliReady(claudeCliStatus);
+
   const isDoneDisabled =
     (requiresApiKey && (!apiKey || (typeof apiKey === 'string' && !apiKey.trim()))) ||
     (modelConfig.provider === 'ollama' && ollamaEndpointChanged) ||
-    isCustomOpenAIInvalid;
+    isCustomOpenAIInvalid ||
+    isClaudeCliInvalid;
 
   useEffect(() => {
     const fetchModelConfig = async () => {
@@ -268,7 +291,7 @@ export function ModelSettingsModal({
           setModelConfig(data);
 
           // Fetch API key if not included in response and provider requires it
-          if (data.provider !== 'ollama' && !data.apiKey) {
+          if (data.provider !== 'ollama' && data.provider !== 'claude-cli' && !data.apiKey) {
             try {
               const apiKeyData = await invoke('api_get_api_key', {
                 provider: data.provider
@@ -286,6 +309,12 @@ export function ModelSettingsModal({
             // Don't set lastFetchedEndpoint here - it will be set after successful model fetch
           }
           hasLoadedInitialConfig.current = true; // Mark that initial config is loaded
+
+          // Sync the Claude Code CLI path when that provider is already active
+          if (data.provider === 'claude-cli') {
+            setClaudeCliPath(data.claudeCliPath || '');
+            loadClaudeCliModels();
+          }
 
           // Fetch Custom OpenAI config if that's the active provider
           if (data.provider === 'custom-openai') {
@@ -412,6 +441,14 @@ export function ModelSettingsModal({
     }
   }, [modelConfig.provider, providerApiKeys, requiresApiKey]);
 
+  // Adopt a CLI path that arrived from the parent (skipInitialFetch callers own
+  // the fetch, so the field would otherwise stay on its initial empty value).
+  useEffect(() => {
+    if (modelConfig.provider === 'claude-cli' && modelConfig.claudeCliPath) {
+      setClaudeCliPath(modelConfig.claudeCliPath);
+    }
+  }, [modelConfig.provider, modelConfig.claudeCliPath]);
+
   // Manual fetch function for Ollama models
   const fetchOllamaModels = async (silent = false) => {
     const trimmedEndpoint = ollamaEndpoint.trim();
@@ -520,6 +557,18 @@ export function ModelSettingsModal({
     } catch (err) {
       console.error('Error loading Built-in AI models:', err);
       toast.error('Failed to load Built-in AI models');
+    }
+  };
+
+  const loadClaudeCliModels = async () => {
+    try {
+      const data = await listClaudeCliModels();
+      if (data.length > 0) {
+        setClaudeCliModels(data.map((m) => m.id));
+      }
+    } catch (err) {
+      // The static fallback list is already correct; a failure here is cosmetic.
+      console.error('Error loading Claude Code CLI models:', err);
     }
   };
 
@@ -640,6 +689,9 @@ export function ModelSettingsModal({
       ollamaEndpoint: modelConfig.provider === 'ollama'
         ? (ollamaEndpoint.trim() || null)
         : (modelConfig.ollamaEndpoint || null),
+      claudeCliPath: modelConfig.provider === 'claude-cli'
+        ? (claudeCliPath.trim() || null)
+        : (modelConfig.claudeCliPath || null),
       // Include custom OpenAI fields
       customOpenAIEndpoint: modelConfig.provider === 'custom-openai' ? customOpenAIEndpoint.trim() : null,
       customOpenAIModel: modelConfig.provider === 'custom-openai' ? customOpenAIModel.trim() : null,
@@ -853,6 +905,17 @@ export function ModelSettingsModal({
                   loadBuiltinAiModels();
                 }
 
+                // Load the saved CLI path when the Claude Code CLI is selected.
+                // ClaudeCliSettings probes for the executable once it mounts.
+                if (provider === 'claude-cli') {
+                  loadClaudeCliModels();
+                  getClaudeCliPath()
+                    .then((saved) => setClaudeCliPath(saved || ''))
+                    .catch((err) => {
+                      console.error('Failed to load Claude Code CLI path:', err);
+                    });
+                }
+
                 // Load custom OpenAI config when selected
                 if (provider === 'custom-openai') {
                   invoke<any>('api_get_custom_openai_config').then((config) => {
@@ -875,7 +938,8 @@ export function ModelSettingsModal({
               </SelectTrigger>
               <SelectContent className="max-h-64 overflow-y-auto">
                 <SelectItem value="builtin-ai">Built-in AI (Offline, No API needed)</SelectItem>
-                <SelectItem value="claude">Claude</SelectItem>
+                <SelectItem value="claude">Claude (API key)</SelectItem>
+                <SelectItem value="claude-cli">Claude Code CLI (Claude subscription)</SelectItem>
                 <SelectItem value="custom-openai">Custom Server (OpenAI)</SelectItem>
                 <SelectItem value="groq">Groq</SelectItem>
                 <SelectItem value="ollama">Ollama</SelectItem>
@@ -1356,6 +1420,16 @@ export function ModelSettingsModal({
               </ScrollArea>
             )}
           </div>
+        )}
+
+        {/* Claude Code CLI Section */}
+        {modelConfig.provider === 'claude-cli' && (
+          <ClaudeCliSettings
+            path={claudeCliPath}
+            onPathChange={setClaudeCliPath}
+            model={modelConfig.model || CLAUDE_CLI_DEFAULT_MODEL}
+            onStatusChange={setClaudeCliStatus}
+          />
         )}
 
         {/* Built-in AI Models Section */}

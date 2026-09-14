@@ -118,6 +118,7 @@ export default function PageContent({
         whisperModel: config.whisperModel,
         apiKey: config.apiKey ?? null,
         ollamaEndpoint: config.ollamaEndpoint ?? null,
+        claudeCliPath: config.claudeCliPath ?? null,
       });
 
       // Emit event so ConfigContext and other listeners stay in sync

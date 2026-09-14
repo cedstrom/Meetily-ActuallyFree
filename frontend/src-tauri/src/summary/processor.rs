@@ -352,6 +352,7 @@ pub async fn generate_meeting_summary(
     temperature: Option<f32>,
     top_p: Option<f32>,
     app_data_dir: Option<&PathBuf>,
+    claude_cli_path: Option<&str>,
     cancellation_token: Option<&CancellationToken>,
     summary_language: Option<&str>,
     detected_transcript_language: Option<&str>,
@@ -428,6 +429,7 @@ pub async fn generate_meeting_summary(
                     temperature,
                     top_p,
                     app_data_dir,
+                    claude_cli_path,
                     cancellation_token,
                 )
                 .await
@@ -484,6 +486,7 @@ pub async fn generate_meeting_summary(
                     temperature,
                     top_p,
                     app_data_dir,
+                    claude_cli_path,
                     cancellation_token,
                 )
                 .await?;
@@ -533,6 +536,7 @@ pub async fn generate_meeting_summary(
             temperature,
             top_p,
             app_data_dir,
+            claude_cli_path,
             cancellation_token,
         )
         .await?;
@@ -558,6 +562,7 @@ pub async fn generate_meeting_summary(
                 temperature,
                 top_p,
                 app_data_dir,
+                claude_cli_path,
                 cancellation_token,
             )
             .await
@@ -585,6 +590,7 @@ pub async fn generate_meeting_summary(
                     temperature,
                     top_p,
                     app_data_dir,
+                    claude_cli_path,
                     cancellation_token,
                 )
                 .await,
@@ -614,6 +620,7 @@ async fn run_markdown_transform(
     temperature: Option<f32>,
     top_p: Option<f32>,
     app_data_dir: Option<&PathBuf>,
+    claude_cli_path: Option<&str>,
     cancellation_token: Option<&CancellationToken>,
 ) -> Result<String, String> {
     if let Some(token) = cancellation_token {
@@ -635,6 +642,7 @@ async fn run_markdown_transform(
         temperature,
         top_p,
         app_data_dir,
+        claude_cli_path,
         cancellation_token,
     )
     .await
@@ -657,6 +665,7 @@ async fn translate_markdown(
     temperature: Option<f32>,
     top_p: Option<f32>,
     app_data_dir: Option<&PathBuf>,
+    claude_cli_path: Option<&str>,
     cancellation_token: Option<&CancellationToken>,
 ) -> Result<String, String> {
     info!("Translation pass: target language = {}", target_language);
@@ -680,6 +689,7 @@ async fn translate_markdown(
         temperature,
         top_p,
         app_data_dir,
+        claude_cli_path,
         cancellation_token,
     )
     .await
@@ -698,6 +708,7 @@ async fn normalize_markdown_to_english(
     temperature: Option<f32>,
     top_p: Option<f32>,
     app_data_dir: Option<&PathBuf>,
+    claude_cli_path: Option<&str>,
     cancellation_token: Option<&CancellationToken>,
 ) -> Result<String, String> {
     info!("English normalization pass: preserving Markdown structure");
@@ -720,6 +731,7 @@ async fn normalize_markdown_to_english(
         temperature,
         top_p,
         app_data_dir,
+        claude_cli_path,
         cancellation_token,
     )
     .await
